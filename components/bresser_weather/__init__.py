@@ -14,6 +14,7 @@ from esphome.const import (
     UNIT_CELSIUS,
     UNIT_PERCENT,
 )
+from esphome.core import CORE
 
 DEPENDENCIES = ["esp8266"]
 AUTO_LOAD = ["sensor", "binary_sensor", "text_sensor"]
@@ -99,6 +100,11 @@ CONFIG_SCHEMA = cv.Schema(
 
 
 async def to_code(config):
+    if CORE.is_esp8266:
+        from esphome.components.esp8266.const import require_waveform
+
+        require_waveform()
+    
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
 
