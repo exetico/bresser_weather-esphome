@@ -11,7 +11,7 @@ esphome:
 esp8266:
   board: d1_mini # or esp01_1m for ESP-01
 
-# Required: SPI configuration for CC1101 radio module
+# Required: SPI configuration for radio module
 spi:
   clk_pin: GPIO14 # D5
   miso_pin: GPIO12 # D6
@@ -58,6 +58,12 @@ web_server:
 
 # Bresser Weather Sensor Component
 bresser_weather:
+  radio: cc1101
+  pins:
+    cs: 15 # D8
+    irq: 4 # D2 (GD0)
+    gpio: 5 # D1 (GD2)
+    rst: -1 # RADIOLIB_NC
   filter_sensor_id: 0x00001F11 # Only accept data from this sensor ID
   temperature:
     name: "Temperature"
