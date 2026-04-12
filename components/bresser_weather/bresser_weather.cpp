@@ -1,6 +1,15 @@
 #include "bresser_weather.h"
 #include "esphome/core/log.h"
 
+// ESP32 portENTER_CRITICAL takes a spinlock argument; ESP8266 does not.
+#ifdef ESP32
+#define CRITICAL_ENTER(mux) portENTER_CRITICAL(&(mux))
+#define CRITICAL_EXIT(mux)  portEXIT_CRITICAL(&(mux))
+#else
+#define CRITICAL_ENTER(mux) portENTER_CRITICAL()
+#define CRITICAL_EXIT(mux)  portEXIT_CRITICAL()
+#endif
+
 namespace esphome
 {
     namespace bresser_weather
@@ -19,6 +28,7 @@ namespace esphome
             this->ws_.begin();
             ESP_LOGI(TAG, "Receiver initialized successfully");
 
+#ifdef ESP32
             xTaskCreatePinnedToCore(
                 radio_task,
                 "bresser_radio",
@@ -29,6 +39,17 @@ namespace esphome
                 1  // core 1 — ESPHome/WiFi runs on core 0
             );
             ESP_LOGI(TAG, "Radio task started on core 1");
+#else
+            xTaskCreate(
+                radio_task,
+                "bresser_radio",
+                8192,
+                this,
+                1,
+                &this->radio_task_handle_
+            );
+            ESP_LOGI(TAG, "Radio task started");
+#endif
         }
 
         // Runs on core 1: receives radio data and buffers it for the main loop.
@@ -36,7 +57,11 @@ namespace esphome
         {
             BresserWeatherComponent *self = static_cast<BresserWeatherComponent *>(parameter);
 
+#ifdef ESP32
             ESP_LOGI(TAG, "Radio task running on core %d", xPortGetCoreID());
+#else
+            ESP_LOGI(TAG, "Radio task running");
+#endif
 
             while (true) {
                 self->ws_.clearSlots();
@@ -82,10 +107,10 @@ namespace esphome
                             d.light_ok = s.w.light_ok;
                             d.valid = true;
 
-                            portENTER_CRITICAL(&self->data_mux_);
+                            CRITICAL_ENTER(self->data_mux_);
                             self->latest_data_ = d;
                             self->data_ready_ = true;
-                            portEXIT_CRITICAL(&self->data_mux_);
+                            CRITICAL_EXIT(self->data_mux_);
                         }
                     }
                 }
@@ -102,10 +127,10 @@ namespace esphome
 
             // Grab the buffered data under spinlock
             WeatherData d;
-            portENTER_CRITICAL(&this->data_mux_);
+            CRITICAL_ENTER(this->data_mux_);
             d = this->latest_data_;
             this->data_ready_ = false;
-            portEXIT_CRITICAL(&this->data_mux_);
+            CRITICAL_EXIT(this->data_mux_);
 
             if (!d.valid)
                 return;
