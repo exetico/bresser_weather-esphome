@@ -1,5 +1,5 @@
-# Example ESPHome configuration for Bresser Weather Sensor
-# Copy this to your ESPHome config directory and customize
+# ESPHome configuration for LilyGo T3 LoRa32 v1.6.1 (868MHz, SX1276)
+# Bresser Weather Sensor Receiver
 
 substitutions:
   device_name: bresser-weather
@@ -7,23 +7,15 @@ substitutions:
 
 esphome:
   name: ${device_name}
+  friendly_name: ${friendly_name}
 
-esp8266:
-  board: d1_mini # or esp01_1m for ESP-01
+esp32:
+  board: ttgo-lora32-v1
+  framework:
+    type: arduino
 
-# Required: SPI configuration for radio module
-spi:
-  clk_pin: GPIO14 # D5
-  miso_pin: GPIO12 # D6
-  mosi_pin: GPIO13 # D7
-
-# External component - use from GitHub after publishing
+# External component - Bresser weather sensor receiver
 external_components:
-  # After publishing to GitHub, use this:
-  # - source: github://YOUR_USERNAME/bresser-esphome@main
-  #   components: [ bresser_weather ]
-
-  # For local development:
   - source:
       type: local
       path: components
@@ -31,40 +23,41 @@ external_components:
 wifi:
   ssid: !secret wifi_ssid
   password: !secret wifi_password
+  fast_connect: false
+  power_save_mode: none
+  output_power: 20dB
 
-  # Enable fallback hotspot
   ap:
     ssid: "${device_name} Fallback"
     password: !secret fallback_password
 
 captive_portal:
 
-# Enable logging
 logger:
+  level: DEBUG
 
-# Enable Home Assistant API
 api:
   encryption:
     key: !secret api_key
 
-# Enable OTA updates
 ota:
   - platform: esphome
     password: !secret ota_password
 
-# Optional: Web server for debugging (uses extra memory)
-web_server:
-  port: 80
-
 # Bresser Weather Sensor Component
+# SX1276 on LilyGo T3 v1.6.1 pin mapping:
+#   CS=GPIO18, RST=GPIO23, DIO0(IRQ)=GPIO26, DIO1(GPIO)=GPIO33
 bresser_weather:
-  radio: cc1101
+  radio: sx1276
+  spi_pins:
+    clk: 5
+    miso: 19
+    mosi: 27
   pins:
-    cs: 15 # D8
-    irq: 4 # D2 (GD0)
-    gpio: 5 # D1 (GD2)
-    rst: -1 # RADIOLIB_NC
-  filter_sensor_id: 0x00001F11 # Only accept data from this sensor ID
+    cs: 18
+    irq: 26
+    gpio: 33
+    rst: 23
   temperature:
     name: "Temperature"
   humidity:

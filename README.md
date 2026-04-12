@@ -1,6 +1,6 @@
 # ESPHome Bresser Weather Sensor Component
 
-Minimal ESPHome component for Bresser weather sensors with CC1101 receiver.
+Minimal ESPHome component for Bresser weather sensors with configurable receiver.
 
 This is a side-code project made possible entirely by the excellent [BresserWeatherSensorReceiver](https://github.com/matthias-bs/BresserWeatherSensorReceiver/tree/main) library by Matthias Prinke. All credit for the sensor decoding and radio communication goes to that project.
 
@@ -8,11 +8,17 @@ This is a side-code project made possible entirely by the excellent [BresserWeat
 
 ## Tested Hardware
 
-This component has been tested **only** with:
+This component has been tested with:
 
 - **Microcontroller**: Wemos D1 Mini (ESP8266)
 - **Radio Module**: CC1101 868MHz
 - **Weather Sensor**: Bresser 7-in-1 (Model 7003100)
+
+And:
+
+- **Microcontroller**: Wemos D1 Mini (ESP8266)
+- **Radio Module**: SX1262 900MHz
+- **Weather Sensor**: Bresser 5-in-1 (Model 7002510)
 
 Other combinations may work but are untested.
 
@@ -67,7 +73,7 @@ The underlying library supports **various configurations**. Untested combination
 
 ```yaml
 external_components:
-  - source: github://exetico/bresser-esphome@main
+  - source: github://exetico/bresser_weather-esphome@main
     components: [bresser_weather]
 ```
 
@@ -81,6 +87,13 @@ external_components:
 ```
 
 ## Configuration
+
+This version requires explicit radio selection and pin configuration in YAML.
+
+### Required Options
+
+- `radio`: one of `cc1101`, `sx1262`, `sx1276`, `lr1121`
+- `pins`: receiver pin mapping (`cs`, `irq`, `gpio`, `rst`). Use `rst: -1` for not connected.
 
 ### Minimal Example
 
@@ -116,6 +129,12 @@ ota:
 
 # Bresser Weather Component
 bresser_weather:
+  radio: cc1101
+  pins:
+    cs: 15 # D8
+    irq: 4 # D2 (GD0)
+    gpio: 5 # D1 (GD2)
+    rst: -1 # RADIOLIB_NC
   filter_sensor_id: 0x00001F11 # Only accept data from this sensor ID
   temperature:
     name: "${friendly_name} Temperature"
@@ -175,7 +194,7 @@ The Bresser 7-in-1 sensor transmits approximately every 48 seconds. The componen
 ### No sensor data received
 
 1. Check wiring - especially 3.3V power and all SPI connections
-2. Verify radio module - CC1101 LED should blink occasionally
+2. Verify radio module wiring and power
 3. Check sensor battery - replace if low
 4. Enable DEBUG logging:
    ```yaml
@@ -183,6 +202,16 @@ The Bresser 7-in-1 sensor transmits approximately every 48 seconds. The componen
      level: DEBUG
    ```
 5. Check sensor range - typically ~100m outdoors
+6. Enable BresserWeatherSensorReceiver and RadioLib logging:
+   ```yaml
+   esphome:
+     platformio_options:
+       build_flags:
+         - -DCORE_DEBUG_LEVEL=ARDUHAL_LOG_LEVEL_VERBOSE
+          - -DRADIOLIB_DEBUG_BASIC
+          - -DRADIOLIB_DEBUG_PROTOCOL
+          - -DRADIOLIB_DEBUG_SPI
+   ```
 
 ### Local Development Setup
 

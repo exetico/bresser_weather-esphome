@@ -1,5 +1,7 @@
+import os
 import esphome.codegen as cg
 import esphome.config_validation as cv
+from esphome import pins
 from esphome.components import sensor, binary_sensor, text_sensor
 from esphome.const import (
     CONF_ID,
@@ -14,8 +16,9 @@ from esphome.const import (
     UNIT_CELSIUS,
     UNIT_PERCENT,
 )
+from esphome.core import CORE
 
-DEPENDENCIES = ["esp8266"]
+DEPENDENCIES = []
 AUTO_LOAD = ["sensor", "binary_sensor", "text_sensor"]
 
 CONF_WIND_GUST = "wind_gust"
@@ -28,6 +31,16 @@ CONF_RSSI = "rssi"
 CONF_BATTERY_OK = "battery_ok"
 CONF_SENSOR_ID = "sensor_id"
 CONF_FILTER_SENSOR_ID = "filter_sensor_id"
+CONF_RADIO = "radio"
+CONF_PINS = "pins"
+CONF_CS_PIN = "cs"
+CONF_IRQ_PIN = "irq"
+CONF_GPIO_PIN = "gpio"
+CONF_RST_PIN = "rst"
+CONF_SPI = "spi_pins"
+CONF_SPI_CLK = "clk"
+CONF_SPI_MISO = "miso"
+CONF_SPI_MOSI = "mosi"
 
 # Custom units not in const
 UNIT_METER_PER_SECOND = "m/s"
@@ -39,9 +52,35 @@ UNIT_DBM = "dBm"
 bresser_weather_ns = cg.esphome_ns.namespace("bresser_weather")
 BresserWeatherComponent = bresser_weather_ns.class_("BresserWeatherComponent", cg.Component)
 
+RADIO_TYPES = {
+    "cc1101": "CC1101",
+    "sx1262": "SX1262",
+    "sx1276": "SX1276",
+    "lr1121": "LR1121",
+}
+
 CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(BresserWeatherComponent),
+        cv.Required(CONF_RADIO): cv.one_of(*RADIO_TYPES, lower=True),
+        cv.Optional(CONF_SPI): cv.Schema(
+            {
+                cv.Required(CONF_SPI_CLK): pins.internal_gpio_output_pin_number,
+                cv.Required(CONF_SPI_MISO): pins.internal_gpio_input_pin_number,
+                cv.Required(CONF_SPI_MOSI): pins.internal_gpio_output_pin_number,
+            }
+        ),
+        cv.Required(CONF_PINS): cv.Schema(
+            {
+                cv.Required(CONF_CS_PIN): pins.internal_gpio_output_pin_number,
+                cv.Required(CONF_IRQ_PIN): pins.internal_gpio_input_pin_number,
+                cv.Required(CONF_GPIO_PIN): pins.internal_gpio_input_pin_number,
+                cv.Required(CONF_RST_PIN): cv.Any(
+                    cv.int_range(min=-1, max=-1),
+                    pins.internal_gpio_output_pin_number,
+                ),
+            }
+        ),
         cv.Optional(CONF_TEMPERATURE): sensor.sensor_schema(
             unit_of_measurement=UNIT_CELSIUS,
             accuracy_decimals=1,
@@ -97,8 +136,16 @@ CONFIG_SCHEMA = cv.Schema(
     }
 ).extend(cv.COMPONENT_SCHEMA)
 
-
 async def to_code(config):
+
+    script_path = os.path.join(os.path.dirname(__file__), "pre_build.py")
+    cg.add_platformio_option("extra_scripts", [f"pre:{script_path}"])
+
+    if CORE.is_esp8266:
+        from esphome.components.esp8266.const import require_waveform
+
+        require_waveform()
+    
     var = cg.new_Pvariable(config[CONF_ID])
     await cg.register_component(var, config)
 
@@ -149,12 +196,39 @@ async def to_code(config):
     if CONF_FILTER_SENSOR_ID in config:
         cg.add(var.set_filter_sensor_id(config[CONF_FILTER_SENSOR_ID]))
 
+    if CONF_SPI in config:
+        spi_config = config[CONF_SPI]
+        cg.add(var.set_spi_clk(spi_config[CONF_SPI_CLK]))
+        cg.add(var.set_spi_miso(spi_config[CONF_SPI_MISO]))
+        cg.add(var.set_spi_mosi(spi_config[CONF_SPI_MOSI]))
+
     # Add library dependencies
     cg.add_platformio_option("lib_deps", ["matthias-bs/BresserWeatherSensorReceiver@0.37.0"])
-    cg.add_platformio_option("lib_deps", ["jgromes/RadioLib@7.4.0"])
-    cg.add_platformio_option("lib_deps", ["vshymanskyy/Preferences@2.2.2"])
+    cg.add_platformio_option("lib_deps", ["jgromes/RadioLib@7.5.0"])
     cg.add_platformio_option("lib_deps", ["bblanchon/ArduinoJson@7.4.2"])
-    
-    # Add build flag to ensure library dependencies are found
-    cg.add_build_flag("-DUSE_CC1101")
-    cg.add_platformio_option("lib_ldf_mode", "deep+")
+    if CORE.is_esp8266:
+        cg.add_platformio_option("lib_deps", ["vshymanskyy/Preferences@2.2.2"])
+    # On ESP32, SPI and Preferences are Arduino framework libraries that need
+    # to be explicitly added as dependencies for RadioLib/BresserWeatherSensorReceiver
+    if CORE.is_esp32:
+        framework_libs = os.path.join(
+            os.path.expanduser("~"), ".platformio", "packages",
+            "framework-arduinoespressif32", "libraries"
+        )
+        if os.path.isdir(framework_libs):
+            cg.add_platformio_option("lib_extra_dirs", [framework_libs])
+        cg.add_platformio_option("lib_deps", ["SPI"])
+        cg.add_platformio_option("lib_deps", ["Preferences"])
+    # Add build flags for selected radio and pins
+    radio_define = RADIO_TYPES[config[CONF_RADIO]]
+    cg.add_build_flag(f"-DUSE_{radio_define}")
+    pin_config = config[CONF_PINS]
+    cg.add_build_flag(f"-DPIN_RECEIVER_CS={pin_config[CONF_CS_PIN]}")
+    cg.add_build_flag(f"-DPIN_RECEIVER_IRQ={pin_config[CONF_IRQ_PIN]}")
+    cg.add_build_flag(f"-DPIN_RECEIVER_GPIO={pin_config[CONF_GPIO_PIN]}")
+    cg.add_build_flag(f"-DPIN_RECEIVER_RST={pin_config[CONF_RST_PIN]}")
+
+    # Use off mode (ESPHome default) to avoid PlatformIO pulling in framework
+    # libraries like WiFi as standalone builds. Dependencies are handled via
+    # explicit lib_deps and include paths in pre_build.py.
+    cg.add_platformio_option("lib_ldf_mode", "off")
