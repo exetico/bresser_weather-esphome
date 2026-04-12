@@ -4,6 +4,9 @@
 #include "esphome/components/sensor/sensor.h"
 #include "esphome/components/binary_sensor/binary_sensor.h"
 #include "esphome/components/text_sensor/text_sensor.h"
+#include <SPI.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
 #include "WeatherSensorCfg.h"
 #include "WeatherSensor.h"
 
@@ -11,6 +14,29 @@ namespace esphome
 {
     namespace bresser_weather
     {
+
+        struct WeatherData
+        {
+            float temp_c;
+            uint8_t humidity;
+            float wind_gust;
+            float wind_speed;
+            float wind_direction;
+            float rain_mm;
+            float uv;
+            float light_klx;
+            float rssi;
+            bool battery_ok;
+            uint32_t sensor_id;
+            uint8_t s_type;
+            bool temp_ok;
+            bool humidity_ok;
+            bool wind_ok;
+            bool rain_ok;
+            bool uv_ok;
+            bool light_ok;
+            bool valid;
+        };
 
         class BresserWeatherComponent : public Component
         {
@@ -35,11 +61,24 @@ namespace esphome
                 filter_sensor_id_ = filter_id;
                 filter_enabled_ = true;
             }
+            void set_spi_clk(int pin) { spi_clk_ = pin; }
+            void set_spi_miso(int pin) { spi_miso_ = pin; }
+            void set_spi_mosi(int pin) { spi_mosi_ = pin; }
 
         protected:
+            static void radio_task(void *parameter);
+
             WeatherSensor ws_;
+            TaskHandle_t radio_task_handle_{nullptr};
+            portMUX_TYPE data_mux_ = portMUX_INITIALIZER_UNLOCKED;
+            WeatherData latest_data_{};
+            volatile bool data_ready_{false};
+
             uint32_t filter_sensor_id_{0};
             bool filter_enabled_{false};
+            int spi_clk_{-1};
+            int spi_miso_{-1};
+            int spi_mosi_{-1};
 
             sensor::Sensor *temperature_sensor_{nullptr};
             sensor::Sensor *humidity_sensor_{nullptr};

@@ -18,7 +18,7 @@ from esphome.const import (
 )
 from esphome.core import CORE
 
-DEPENDENCIES = ["esp8266"]
+DEPENDENCIES = []
 AUTO_LOAD = ["sensor", "binary_sensor", "text_sensor"]
 
 CONF_WIND_GUST = "wind_gust"
@@ -37,6 +37,10 @@ CONF_CS_PIN = "cs"
 CONF_IRQ_PIN = "irq"
 CONF_GPIO_PIN = "gpio"
 CONF_RST_PIN = "rst"
+CONF_SPI = "spi_pins"
+CONF_SPI_CLK = "clk"
+CONF_SPI_MISO = "miso"
+CONF_SPI_MOSI = "mosi"
 
 # Custom units not in const
 UNIT_METER_PER_SECOND = "m/s"
@@ -59,6 +63,13 @@ CONFIG_SCHEMA = cv.Schema(
     {
         cv.GenerateID(): cv.declare_id(BresserWeatherComponent),
         cv.Required(CONF_RADIO): cv.one_of(*RADIO_TYPES, lower=True),
+        cv.Optional(CONF_SPI): cv.Schema(
+            {
+                cv.Required(CONF_SPI_CLK): pins.internal_gpio_output_pin_number,
+                cv.Required(CONF_SPI_MISO): pins.internal_gpio_input_pin_number,
+                cv.Required(CONF_SPI_MOSI): pins.internal_gpio_output_pin_number,
+            }
+        ),
         cv.Required(CONF_PINS): cv.Schema(
             {
                 cv.Required(CONF_CS_PIN): pins.internal_gpio_output_pin_number,
@@ -185,11 +196,29 @@ async def to_code(config):
     if CONF_FILTER_SENSOR_ID in config:
         cg.add(var.set_filter_sensor_id(config[CONF_FILTER_SENSOR_ID]))
 
+    if CONF_SPI in config:
+        spi_config = config[CONF_SPI]
+        cg.add(var.set_spi_clk(spi_config[CONF_SPI_CLK]))
+        cg.add(var.set_spi_miso(spi_config[CONF_SPI_MISO]))
+        cg.add(var.set_spi_mosi(spi_config[CONF_SPI_MOSI]))
+
     # Add library dependencies
     cg.add_platformio_option("lib_deps", ["matthias-bs/BresserWeatherSensorReceiver@0.37.0"])
     cg.add_platformio_option("lib_deps", ["jgromes/RadioLib@7.5.0"])
-    cg.add_platformio_option("lib_deps", ["vshymanskyy/Preferences@2.2.2"])
     cg.add_platformio_option("lib_deps", ["bblanchon/ArduinoJson@7.4.2"])
+    if CORE.is_esp8266:
+        cg.add_platformio_option("lib_deps", ["vshymanskyy/Preferences@2.2.2"])
+    # On ESP32, SPI and Preferences are Arduino framework libraries that need
+    # to be explicitly added as dependencies for RadioLib/BresserWeatherSensorReceiver
+    if CORE.is_esp32:
+        framework_libs = os.path.join(
+            os.path.expanduser("~"), ".platformio", "packages",
+            "framework-arduinoespressif32", "libraries"
+        )
+        if os.path.isdir(framework_libs):
+            cg.add_platformio_option("lib_extra_dirs", [framework_libs])
+        cg.add_platformio_option("lib_deps", ["SPI"])
+        cg.add_platformio_option("lib_deps", ["Preferences"])
     # Add build flags for selected radio and pins
     radio_define = RADIO_TYPES[config[CONF_RADIO]]
     cg.add_build_flag(f"-DUSE_{radio_define}")
@@ -199,4 +228,7 @@ async def to_code(config):
     cg.add_build_flag(f"-DPIN_RECEIVER_GPIO={pin_config[CONF_GPIO_PIN]}")
     cg.add_build_flag(f"-DPIN_RECEIVER_RST={pin_config[CONF_RST_PIN]}")
 
-    cg.add_platformio_option("lib_ldf_mode", "deep+")
+    # Use off mode (ESPHome default) to avoid PlatformIO pulling in framework
+    # libraries like WiFi as standalone builds. Dependencies are handled via
+    # explicit lib_deps and include paths in pre_build.py.
+    cg.add_platformio_option("lib_ldf_mode", "off")

@@ -1,0 +1,82 @@
+# ESPHome configuration for LilyGo T3 LoRa32 v1.6.1 (868MHz, SX1276)
+# Bresser Weather Sensor Receiver
+
+substitutions:
+  device_name: bresser-weather
+  friendly_name: Bresser Weather Station
+
+esphome:
+  name: ${device_name}
+  friendly_name: ${friendly_name}
+
+esp32:
+  board: ttgo-lora32-v1
+  framework:
+    type: arduino
+
+# External component - Bresser weather sensor receiver
+external_components:
+  - source:
+      type: local
+      path: components
+
+wifi:
+  ssid: !secret wifi_ssid
+  password: !secret wifi_password
+  fast_connect: false
+  power_save_mode: none
+  output_power: 20dB
+
+  ap:
+    ssid: "${device_name} Fallback"
+    password: !secret fallback_password
+
+captive_portal:
+
+logger:
+  level: DEBUG
+
+api:
+  encryption:
+    key: !secret api_key
+
+ota:
+  - platform: esphome
+    password: !secret ota_password
+
+# Bresser Weather Sensor Component
+# SX1276 on LilyGo T3 v1.6.1 pin mapping:
+#   CS=GPIO18, RST=GPIO23, DIO0(IRQ)=GPIO26, DIO1(GPIO)=GPIO33
+bresser_weather:
+  radio: sx1276
+  spi_pins:
+    clk: 5
+    miso: 19
+    mosi: 27
+  pins:
+    cs: 18
+    irq: 26
+    gpio: 33
+    rst: 23
+  temperature:
+    name: "Temperature"
+  humidity:
+    name: "Humidity"
+  wind_gust:
+    name: "Wind Gust"
+  wind_speed:
+    name: "Wind Speed"
+  wind_direction:
+    name: "Wind Direction"
+  rain:
+    name: "Rain"
+  uv:
+    name: "UV Index"
+  light:
+    name: "Light"
+  rssi:
+    name: "RSSI"
+  battery_ok:
+    name: "Battery OK"
+  sensor_id:
+    name: "Sensor ID"
