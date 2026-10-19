@@ -1,5 +1,6 @@
 import esphome.codegen as cg
 import esphome.config_validation as cv
+from esphome.core import CORE
 from esphome.components import sensor, binary_sensor, text_sensor
 from esphome.const import (
     CONF_ID,
@@ -148,6 +149,16 @@ async def to_code(config):
 
     if CONF_FILTER_SENSOR_ID in config:
         cg.add(var.set_filter_sensor_id(config[CONF_FILTER_SENSOR_ID]))
+
+    # ESPHome >= 2026.1 strips the Arduino waveform code on ESP8266 unless
+    # requested. RadioLib's Arduino HAL uses tone(), which needs it.
+    if CORE.is_esp8266:
+        try:
+            from esphome.components.esp8266.const import require_waveform
+
+            require_waveform()
+        except ImportError:
+            pass  # Older ESPHome always links the waveform code
 
     # Add library dependencies
     cg.add_platformio_option("lib_deps", ["matthias-bs/BresserWeatherSensorReceiver@0.37.0"])
