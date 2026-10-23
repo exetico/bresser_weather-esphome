@@ -67,7 +67,7 @@ The underlying library supports **various configurations**. Untested combination
 
 ```yaml
 external_components:
-  - source: github://exetico/bresser-esphome@main
+  - source: github://exetico/bresser_weather-esphome@main
     components: [bresser_weather]
 ```
 
